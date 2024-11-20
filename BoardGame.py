@@ -1,53 +1,76 @@
 #Example Flask App for a hexaganal tile game
 #Logic is in this python file
 
+from flask import Flask, render_template, request, redirect, url_for, session
 import random
 
+app = Flask(__name__)
+app.secret_key = "your_secret_key"  # Replace with a secure random key
+
 def roll_dice():
-    """Simulates rolling two dice and returns their sum and individual values."""
+    """Simulate rolling two dice and return their values and total."""
     die1 = random.randint(1, 6)
     die2 = random.randint(1, 6)
     return die1, die2, die1 + die2
 
-def dice_game():
-    """Main function to play the dice game."""
-    print("Welcome to the Dice Game!")
+@app.route('/')
+def index():
+    """Home page with game instructions and player setup."""
+    return render_template('index.html')
 
-    # Get the number of players
-    while True:
-        try:
-            num_players = int(input("Enter the number of players (2-5): "))
-            if 2 <= num_players <= 5:
-                break
-            else:
-                print("Please enter a number between 2 and 5.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
+@app.route('/start', methods=['POST'])
+def start_game():
+    """Initialize game with players."""
+    num_players = int(request.form['num_players'])
+    session['players'] = [f"Player {i + 1}" for i in range(num_players)]
+    session['current_player'] = 0  # Index of the current player
+    session['game_active'] = True
+    return redirect(url_for('play_game'))
 
-    # Initialize player list
-    players = [f"Player {i + 1}" for i in range(num_players)]
+@app.route('/play', methods=['GET', 'POST'])
+def play_game():
+    """Handle the game play logic."""
+    if not session.get('game_active', False):
+        return redirect(url_for('index'))
 
-    print("\nGame Start! First to roll a 7 or 11 wins. Roll 1 and 1 to lose.")
-    print("Pass the dice for other rolls. Let's begin!\n")
+    players = session['players']
+    current_player_idx = session['current_player']
+    current_player = players[current_player_idx]
 
-    while True:
-        for player in players:
-            input(f"{player}, press Enter to roll the dice...")
-            die1, die2, total = roll_dice()
+    if request.method == 'POST':
+        die1, die2, total = roll_dice()
 
-            print(f"You rolled {die1} and {die2} (Total: {total})")
+        if total == 7 or total == 11:
+            session['winner'] = current_player
+            session['game_active'] = False
+            return redirect(url_for('end_game'))
+        elif die1 == 1 and die2 == 1:
+            session['loser'] = current_player
+            session['game_active'] = False
+            return redirect(url_for('end_game'))
+        else:
+            # Move to the next player
+            session['current_player'] = (current_player_idx + 1) % len(players)
 
-            if total == 7 or total == 11:
-                print(f"\nCongratulations, {player}! You rolled a {total} and won the game!\n")
-                return
+        return render_template('play.html', player=current_player, die1=die1, die2=die2, total=total)
 
-            elif die1 == 1 and die2 == 1:
-                print(f"\nOh no, {player}! You rolled a 1 and 1 and lost the game.\n")
-                return
+    return render_template('play.html', player=current_player)
 
-            else:
-                print(f"{player} did not win or lose. Passing the dice to the next player.\n")
+@app.route('/end')
+def end_game():
+    """Display the game result."""
+    winner = session.get('winner')
+    loser = session.get('loser')
 
-# Run the game
-dice_game()
+    if winner:
+        message = f"Congratulations, {winner}! You rolled a winning total and won the game!"
+    elif loser:
+        message = f"Oh no, {loser}! You rolled double 1s and lost the game."
+    else:
+        message = "The game ended with no winner or loser."
+
+    return render_template('end.html', message=message)
+
+if __name__ == '__main__':
+    app.run(debug=True)
 
